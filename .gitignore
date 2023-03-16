@@ -24,3 +24,7 @@ Icon
 Network Trash Folder
 Temporary Items
 .apdisk
+
+# Streamlit env+data
+/streamlit-env
+/web_app_data
