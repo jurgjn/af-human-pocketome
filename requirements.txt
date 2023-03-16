@@ -1,0 +1,7 @@
+matplotlib
+#ProDy==2.2.0 # Problems building biopython
+seaborn
+stmol
+streamlit
+streamlit-aggrid==0.3.3 # pre_selected_rows has no effect in later versions
+streamlit-ext
