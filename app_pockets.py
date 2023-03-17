@@ -48,9 +48,18 @@ def read_af2_v4_(af2_id):
 def read_structures():
     return pd.read_csv('web_app_data/structures.tsv', sep='\t')
 
-@st.cache_resource
-def read_pockets():
-    return pd.read_csv('web_app_data/pockets.tsv', sep='\t')
+#@st.cache_resource
+def read_pockets(struct_id):
+    with sqlite3.connect('web_app_data/pockets.sqlite') as con:
+        df_ = pd.read_sql(f'select * from pockets where struct_id == "{struct_id}"', con)
+    print(df_)
+    return df_.drop(['cl_str'], axis=1)
+
+def read_pocket_cl(struct_id, pocket_id):
+    with sqlite3.connect('web_app_data/pockets.sqlite') as con:
+        df_ = pd.read_sql(f'select * from pockets where struct_id == "{struct_id}" and pocket_id == {pocket_id}', con)
+    assert len(df_) == 1
+    return df_['cl_str'].squeeze()
 
 st.write(f'# Structures')
 search_query = st.text_input(label='Search for gene name, Entrez or UniProt id:')
@@ -77,7 +86,7 @@ with col2:
     with tab1:
         df_ = pd.read_csv('web_app_data/clueio_nominal_targets.tsv', sep='\t').query('gene_name == @sel_struct_gene_name')
         st.dataframe(df_[['compound_id', 'source']].sort_values('compound_id').reset_index(drop=True), use_container_width=True, height=200)
-        st.write(f'{uf(df_["compound_id"].nunique())} compounds nominally targetting {sel_struct_gene_name}')
+        st.write(f'{uf(df_["compound_id"].nunique())} unique compounds nominally targetting {sel_struct_gene_name}')
     with tab2:
         UniProtKB_ac_ = sel_struct['UniProtKB_ac']
         st.write(f'- [{UniProtKB_ac_} in UniProt](https://www.uniprot.org/uniprotkb/{UniProtKB_ac_}/entry)')
@@ -87,7 +96,7 @@ col1, col2 = st.columns(2)
 with col1:
     st.write(f'## Pockets for {sel_struct["UniProtKB_ac"]}')
     cols_ = ['struct_id', 'energy_per_vol', 'xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax', 'cl_file', 'cl_isfile', 'resid', 'n_resid']
-    sel_pocket = select_dataframe_row(read_pockets().query('struct_id == @sel_struct_af2_id').drop(cols_, axis=1).round(
+    sel_pocket = select_dataframe_row(read_pockets(sel_struct_af2_id).drop(cols_, axis=1).round(
         {'energy': 1, 'rad_gyration': 1, 'buriedness': 2, 'score': 1, 'mean_pLDDT': 1}), selected_row_index=0, height=300)
     #st.write(sel_pocket)
 
@@ -97,12 +106,24 @@ with col2:
     xyzview.addModel(read_af2_v4_(sel_struct_af2_id), format='pdb')
     xyzview.setStyle({'model': 0}, {
         'cartoon': {
-            'color':'spectrum',
+            'color': 'gray',
             #'colorscheme': {
             #'prop': 'resi',
             #'map': colors_pocket,
         },
     })
+
+    for i, r in read_pockets(sel_struct_af2_id).iterrows():
+        st.write('Attempting to load:', r['struct_id'], r['pocket_id'], r['resid_swissmodel_coverage'])
+        color_ = {
+            'full': 'green',
+            'parital': 'yellow',
+            'none': 'red',
+        }[r['resid_swissmodel_coverage']]
+        xyzview.addModel(read_pocket_cl(r['struct_id'], r['pocket_id']), format='pdb')
+        xyzview.setStyle({'model': -1}, {})
+        xyzview.addSurface(py3Dmol.VDW, {'opacity': 0.7, 'color': color_}, {'model': -1})
+
     xyzview.setBackgroundColor('#eeeeee')
     xyzview.zoomTo()
     stmol.showmol(xyzview, height=800, width=800)
