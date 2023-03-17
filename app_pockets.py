@@ -64,8 +64,23 @@ else:
         ).fillna(False)
     structures_ = structures_.loc[m_]
 
-sel_struct = select_dataframe_row(structures_.drop(['seq'], axis=1), selected_row_index=0, height=300)
-sel_struct_af2_id = sel_struct['af2_id']
+if st.checkbox('Only show genes annotated as nominal targets'):
+    structures_ = structures_.query('n_clueio_targets > 0')
+
+col1, col2 = st.columns(2)
+with col1:
+    sel_struct = select_dataframe_row(structures_.drop(['seq'], axis=1), selected_row_index=0, height=300)
+    sel_struct_af2_id = sel_struct['af2_id']
+    sel_struct_gene_name = sel_struct['gene_name']
+
+with col2:
+    df_ = pd.read_csv('web_app_data/clueio_nominal_targets.tsv', sep='\t').query('gene_name == @sel_struct_gene_name')
+    st.dataframe(df_, use_container_width=True, height=200)
+    st.write(f'{uf(len(df_))} compounds nominally targetting {sel_struct_gene_name}')
+
 st.write(f'# Pockets for {sel_struct["UniProtKB_ac"]}')
 sel_pocket = select_dataframe_row(read_pockets().query('struct_id == @sel_struct_af2_id'), selected_row_index=0, height=300)
 st.write(sel_pocket)
+
+
+
