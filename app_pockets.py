@@ -39,8 +39,8 @@ def select_dataframe_row(df_, selected_row_index, height=400):
     return gridResponse['selected_rows'][0]
 
 @st.cache_resource
-def read_af2_v3_(af2_id):
-    url_ = f'https://alphafold.ebi.ac.uk/files/AF-{af2_id}-F1-model_v3.pdb'
+def read_af2_v4_(af2_id):
+    url_ = f'https://alphafold.ebi.ac.uk/files/AF-{af2_id}-model_v4.pdb'
     with urllib.request.urlopen(url_) as url:
         return url.read().decode('utf-8')
 
@@ -64,23 +64,45 @@ else:
         ).fillna(False)
     structures_ = structures_.loc[m_]
 
-if st.checkbox('Only show genes annotated as nominal targets'):
-    structures_ = structures_.query('n_clueio_targets > 0')
-
 col1, col2 = st.columns(2)
 with col1:
+    if st.checkbox('Only show genes annotated as nominal targets', value=True):
+        structures_ = structures_.query('n_clueio_targets > 0')
     sel_struct = select_dataframe_row(structures_.drop(['seq'], axis=1), selected_row_index=0, height=300)
     sel_struct_af2_id = sel_struct['af2_id']
     sel_struct_gene_name = sel_struct['gene_name']
 
 with col2:
-    df_ = pd.read_csv('web_app_data/clueio_nominal_targets.tsv', sep='\t').query('gene_name == @sel_struct_gene_name')
-    st.dataframe(df_, use_container_width=True, height=200)
-    st.write(f'{uf(len(df_))} compounds nominally targetting {sel_struct_gene_name}')
+    tab1, tab2 = st.tabs(['Nominal targets', 'External links'])
+    with tab1:
+        df_ = pd.read_csv('web_app_data/clueio_nominal_targets.tsv', sep='\t').query('gene_name == @sel_struct_gene_name')
+        st.dataframe(df_[['compound_id', 'source']].sort_values('compound_id').reset_index(drop=True), use_container_width=True, height=200)
+        st.write(f'{uf(df_["compound_id"].nunique())} compounds nominally targetting {sel_struct_gene_name}')
+    with tab2:
+        UniProtKB_ac_ = sel_struct['UniProtKB_ac']
+        st.write(f'- [{UniProtKB_ac_} in UniProt](https://www.uniprot.org/uniprotkb/{UniProtKB_ac_}/entry)')
+        st.write(f'- [{UniProtKB_ac_} in AlphaFill](https://alphafill.eu/model?id={UniProtKB_ac_})')
 
-st.write(f'# Pockets for {sel_struct["UniProtKB_ac"]}')
-sel_pocket = select_dataframe_row(read_pockets().query('struct_id == @sel_struct_af2_id'), selected_row_index=0, height=300)
-st.write(sel_pocket)
+col1, col2 = st.columns(2)
+with col1:
+    st.write(f'## Pockets for {sel_struct["UniProtKB_ac"]}')
+    cols_ = ['struct_id', 'energy_per_vol', 'xmin', 'xmax', 'ymin', 'ymax', 'zmin', 'zmax', 'cl_file', 'cl_isfile', 'resid', 'n_resid']
+    sel_pocket = select_dataframe_row(read_pockets().query('struct_id == @sel_struct_af2_id').drop(cols_, axis=1).round(
+        {'energy': 1, 'rad_gyration': 1, 'buriedness': 2, 'score': 1, 'mean_pLDDT': 1}), selected_row_index=0, height=300)
+    #st.write(sel_pocket)
 
-
-
+with col2:
+    #st.write(f'# Structure/visualisation for {sel_struct_af2_id}')
+    xyzview = py3Dmol.view()
+    xyzview.addModel(read_af2_v4_(sel_struct_af2_id), format='pdb')
+    xyzview.setStyle({'model': 0}, {
+        'cartoon': {
+            'color':'spectrum',
+            #'colorscheme': {
+            #'prop': 'resi',
+            #'map': colors_pocket,
+        },
+    })
+    xyzview.setBackgroundColor('#eeeeee')
+    xyzview.zoomTo()
+    stmol.showmol(xyzview, height=800, width=800)
